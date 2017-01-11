@@ -1,6 +1,3 @@
-#sort
-#class meta?
-
 import numpy as np
 import cv2
 
