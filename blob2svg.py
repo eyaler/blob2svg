@@ -1,9 +1,15 @@
+#sort
+#class meta?
+
 import numpy as np
 import cv2
 
 def blob2svg(image, blob_levels=(1,255), label=None, color=None, filename=None):
+    if isinstance(image, str):
+        image = cv2.imread(image, cv2.IMREAD_GRAYSCALE)
+
     image = image.squeeze()
-    assert len(image.shape) == 2, 'Image must be single channel'
+    assert len(image.shape) == 2, 'image must be single channel'
 
     try:
         len(blob_levels)
@@ -26,17 +32,21 @@ def blob2svg(image, blob_levels=(1,255), label=None, color=None, filename=None):
     if label is None:
         label = color
 
-    svg.append('<class>%s</class>'%(label))
     for i,c in enumerate(contours):
         points = ' '.join(str('%d,%d'%(p[0][0], p[0][1])) for p in c)
         svg.append('<polygon class="%s" fill="%s" id="%d" points="%s" />'%(label, color, i, points))
 
     if filename is not None:
-        save_svg(filename, svg)
+        save_svg(filename, svg, resolution=image.shape[::-1])
 
     return svg
 
-def save_svg(filename, svg):
-    svg = ['<svg xmlns="http://www.w3.org/2000/svg" version="1.1">'] + svg + ['</svg>']
+def save_svg(filename, svg, resolution=None):
+    if resolution is None:
+        resolution = ''
+        print('Warning: resolution not specified')
+    else:
+        resolution = 'width="%s" height="%s"'%(resolution[0], resolution[1])
+    svg = ['<svg xmlns="http://www.w3.org/2000/svg" version="1.1" %s>'%(resolution)] + svg + ['</svg>']
     with open(filename, 'w') as f:
         f.writelines(s+'\n' for s in svg)
