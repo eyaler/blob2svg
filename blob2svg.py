@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 from scipy import ndimage
+from itertools import groupby
 
 def blob2svg(image, blob_levels=(1,255), method=None, label=None, color=None, save_to=None, show=False):
     if isinstance(image, str):
@@ -17,7 +18,7 @@ def blob2svg(image, blob_levels=(1,255), method=None, label=None, color=None, sa
         blob_levels = [blob_levels[0]]*2
     assert len(blob_levels) == 2
     image = ((image >= min(blob_levels)) * (image <= max(blob_levels)) * 255).astype(np.uint8)
-    zoom = ndimage.zoom(image, 2, order=0)
+    zoom = ndimage.zoom(image, 2, order=0) # this is in order to get a scalable vertex-following contour instead of a pixel-following contour
 
     if method is None:
         method = cv2.CHAIN_APPROX_SIMPLE
@@ -36,7 +37,14 @@ def blob2svg(image, blob_levels=(1,255), method=None, label=None, color=None, sa
 
     contours.sort(key=lambda x: str(x))
     for i,c in enumerate(contours):
-        points = ' '.join(str('%d,%d'%((p[0][0]+1)//2, (p[0][1]+1)//2)) for p in c)
+        c = [((p[0][0] + 1) // 2, (p[0][1] + 1) // 2) for p in c]
+
+        # remove consecutive duplicates
+        c = [x[0] for x in groupby(c)]
+        if len(c)>1 and c[-1]==c[0]:
+            del c[-1]
+
+        points = ' '.join(str('%d,%d'%(p[0], p[1])) for p in c)
         svg.append('<polygon class="%s" fill="%s" id="%d" points="%s"/>'%(label, color, i, points))
 
     if save_to is not None:
