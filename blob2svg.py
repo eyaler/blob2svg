@@ -3,7 +3,9 @@ import cv2
 from scipy import ndimage
 from itertools import groupby
 
-def blob2svg(image, blob_levels=(1,255), method=None, label=None, color=None, save_to=None, show=False):
+def blob2svg(image, blob_levels=(1,255), method=None, box=False, label=None, color=None, save_to=None, show=False):
+    # method can be one of: cv2.CHAIN_APPROX_NONE, cv2.CHAIN_APPROX_SIMPLE (or None, default), cv2.CHAIN_APPROX_TC89_L1, cv2.CHAIN_APPROX_TC89_KCOS
+
     if isinstance(image, str):
         image = cv2.imread(image, cv2.IMREAD_GRAYSCALE)
 
@@ -35,6 +37,9 @@ def blob2svg(image, blob_levels=(1,255), method=None, label=None, color=None, sa
     if label is None:
         label = color
 
+    if box:
+        contours = [cv2.boxPoints(cv2.minAreaRect(c))[:,None,:] for c in contours]
+
     contours.sort(key=lambda x: str(x))
     for i,c in enumerate(contours):
         c = [((p[0][0] + 1) // 2, (p[0][1] + 1) // 2) for p in c]
@@ -52,7 +57,7 @@ def blob2svg(image, blob_levels=(1,255), method=None, label=None, color=None, sa
 
     if show:
         cimage = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-        cv2.drawContours(cimage, [c//2 for c in contours], -1, color=(0, 0, 255))
+        cv2.drawContours(cimage, [(c/2).astype(int) for c in contours], -1, color=(0, 0, 255))
         cv2.imshow('Found Contours', cimage)
         cv2.waitKey()
 
