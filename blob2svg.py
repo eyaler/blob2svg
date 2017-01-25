@@ -3,7 +3,7 @@ import cv2
 from scipy import ndimage
 from itertools import groupby
 
-def blob2svg(image, blob_levels=(1,255), method=None, box=False, label=None, color=None, save_to=None, show=False):
+def blob2svg(image, blob_levels=(1,255), method=None, abs_eps=0, rel_eps=0, box=False, label=None, color=None, save_to=None, show=False):
     # method can be one of: cv2.CHAIN_APPROX_NONE, cv2.CHAIN_APPROX_SIMPLE (or None, default), cv2.CHAIN_APPROX_TC89_L1, cv2.CHAIN_APPROX_TC89_KCOS
 
     if isinstance(image, str):
@@ -36,6 +36,9 @@ def blob2svg(image, blob_levels=(1,255), method=None, box=False, label=None, col
         color = '#%02X%02X%02X' % (r(), r(), r())
     if label is None:
         label = color
+
+    if abs_eps or rel_eps:
+        contours = [cv2.approxPolyDP(c, max(abs_eps, rel_eps*cv2.arcLength(c, True)), True) for c in contours]
 
     if box:
         contours = [cv2.boxPoints(cv2.minAreaRect(c))[:,None,:] for c in contours]
