@@ -19,7 +19,7 @@ def blob2svg(image, blob_levels=(1,255), method=None, abs_eps=0, rel_eps=0, box=
     if len(blob_levels) == 1:
         blob_levels = [blob_levels[0]]*2
     assert len(blob_levels) == 2
-    image = ((image >= min(blob_levels)) * (image <= max(blob_levels)) * 255).astype(np.uint8)
+    image = np.uint8((image >= min(blob_levels)) * (image <= max(blob_levels)) * 255)
     zoom = ndimage.zoom(image, 2, order=0) # this is in order to get a scalable vertex-following contour instead of a pixel-following contour
 
     if method is None:
@@ -41,7 +41,8 @@ def blob2svg(image, blob_levels=(1,255), method=None, abs_eps=0, rel_eps=0, box=
         contours = [cv2.approxPolyDP(c, max(abs_eps, rel_eps*cv2.arcLength(c, True)), True) for c in contours]
 
     if box:
-        contours = [cv2.boxPoints(cv2.minAreaRect(c))[:,None,:] for c in contours]
+        fix_box = lambda x: ((x[0][0] + 0.5, x[0][1] + 0.5), (x[1][0] + 0.5, x[1][1] + 0.5), x[2])
+        contours = [cv2.boxPoints(fix_box(cv2.minAreaRect(c)))[:,None,:] for c in contours]
 
     contours.sort(key=lambda x: str(x))
     for i,c in enumerate(contours):
@@ -60,7 +61,7 @@ def blob2svg(image, blob_levels=(1,255), method=None, abs_eps=0, rel_eps=0, box=
 
     if show:
         cimage = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-        cv2.drawContours(cimage, [(c/2).astype(int) for c in contours], -1, color=(0, 0, 255))
+        cv2.drawContours(cimage, [np.int0(c/2) for c in contours], -1, color=(0, 0, 255))
         cv2.imshow('Found Contours', cimage)
         cv2.waitKey()
 
