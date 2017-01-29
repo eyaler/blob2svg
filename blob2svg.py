@@ -41,8 +41,7 @@ def blob2svg(image, blob_levels=(1,255), method=None, abs_eps=0, rel_eps=0, box=
         contours = [cv2.approxPolyDP(c, max(abs_eps, rel_eps*cv2.arcLength(c, True)), True) for c in contours]
 
     if box:
-        fix_box = lambda x: ((x[0][0] + 0.5, x[0][1] + 0.5), (x[1][0] + 0.5, x[1][1] + 0.5), x[2])
-        contours = [cv2.boxPoints(fix_box(cv2.minAreaRect(c)))[:,None,:] for c in contours]
+        contours = [cv2.boxPoints(cv2.minAreaRect(c))[:,None,:] for c in contours]
 
     contours.sort(key=lambda x: str(x))
     for i,c in enumerate(contours):
