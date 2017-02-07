@@ -57,7 +57,7 @@ def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, box
         if len(c) > 1 and c[-1] == c[0]:
             del c[-1]
 
-        points = ' '.join(str('%f,%f' % (p[0], p[1])) for p in c)
+        points = ' '.join(str(p[0]).rstrip('0').rstrip('.')+','+str(p[1]).rstrip('0').rstrip('.') for p in c)
         svg.append('<polygon class="%s" fill="%s" id="%d" points="%s"/>' % (label, color, i, points))
 
     if save_to is not None:
