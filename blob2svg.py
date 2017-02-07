@@ -40,47 +40,24 @@ def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, box
     if label is None:
         label = color
 
-    if abs_eps or rel_eps:
-        contours = [cv2.approxPolyDP(c, max(abs_eps, rel_eps * cv2.arcLength(c, True)), True) for c in contours]
-
-    if box:
-        contours = [cv2.boxPoints(cv2.minAreaRect(c))[:, None, :] for c in contours]
-
     contours.sort(key=lambda x: str(x))
-    for i, c in enumerate(contours):
-        c = [[(p[0][0] + 1) // 2, (p[0][1] + 1) // 2] for p in c]
+    for i in range(len(contours)):
+        contours[i] = (contours[i] + 1) // 2
 
-        if box:  # fix vectors to be pixel accurate parallel
-            dx1 = abs(c[0][0] - c[1][0])
-            dy1 = abs(c[0][1] - c[1][1])
-            dx2 = abs(c[2][0] - c[3][0])
-            dy2 = abs(c[2][1] - c[3][1])
-            if dx2 > dx1:
-                if c[0][0] > c[1][0]:
-                    c[0][0] += dx2 - dx1
-                else:
-                    c[1][0] += dx2 - dx1
-            else:
-                if c[2][0] > c[3][0]:
-                    c[2][0] += dx1 - dx2
-                else:
-                    c[3][0] += dx1 - dx2
-            if dy2 > dy1:
-                if c[0][1] > c[1][1]:
-                    c[0][1] += dy2 - dy1
-                else:
-                    c[1][1] += dy2 - dy1
-            else:
-                if c[2][1] > c[3][1]:
-                    c[2][1] += dy1 - dy2
-                else:
-                    c[3][1] += dy1 - dy2
-        else:  # remove consecutive duplicates
-            c = [x[0] for x in groupby(c)]
-            if len(c) > 1 and c[-1] == c[0]:
-                del c[-1]
+        if abs_eps or rel_eps:
+            contours[i] = cv2.approxPolyDP(contours[i], max(abs_eps, rel_eps * cv2.arcLength(contours[i], True)), True)
 
-        points = ' '.join(str('%d,%d' % (p[0], p[1])) for p in c)
+        if box:
+            contours[i] = cv2.boxPoints(cv2.minAreaRect(contours[i]))[:, None, :]
+
+        c = [tuple(x[0]) for x in contours[i]]
+
+        # remove consecutive duplicates
+        c = [x[0] for x in groupby(c)]
+        if len(c) > 1 and c[-1] == c[0]:
+            del c[-1]
+
+        points = ' '.join(str('%f,%f' % (p[0], p[1])) for p in c)
         svg.append('<polygon class="%s" fill="%s" id="%d" points="%s"/>' % (label, color, i, points))
 
     if save_to is not None:
@@ -88,7 +65,7 @@ def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, box
 
     if show:
         cimage = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-        cv2.drawContours(cimage, [np.int0(c / 2) for c in contours], -1, color=(0, 0, 255))
+        cv2.drawContours(cimage, [np.int0(c) for c in contours], -1, color=(0, 0, 255))
         cv2.imshow('Found Contours', cimage)
         cv2.waitKey()
 
