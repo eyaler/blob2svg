@@ -5,7 +5,7 @@ from itertools import groupby
 
 
 def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, box=False, label=None, color=None,
-             save_to=None, show=False):
+             save_to=None, show=False, verbose=True):
     # method can be one of: cv2.CHAIN_APPROX_NONE, cv2.CHAIN_APPROX_SIMPLE (or None, default), cv2.CHAIN_APPROX_TC89_L1, cv2.CHAIN_APPROX_TC89_KCOS
 
     if isinstance(image, str):
@@ -30,7 +30,7 @@ def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, box
 
     _, all_contours, _ = cv2.findContours(zoom, mode=cv2.RETR_LIST, method=method)
     _, contours, _ = cv2.findContours(zoom, mode=cv2.RETR_EXTERNAL, method=method)
-    if len(contours) != len(all_contours):
+    if len(contours) != len(all_contours) and verbose:
         print('Warning: found and ignored %d child contours' % (len(all_contours) - len(contours)))
 
     svg = []
@@ -41,6 +41,7 @@ def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, box
         label = color
 
     contours.sort(key=lambda x: str(x))
+    skipped_small = 0
     for i in range(len(contours)):
         contours[i] = (contours[i] + 1) // 2
 
@@ -57,15 +58,23 @@ def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, box
         if len(c) > 1 and c[-1] == c[0]:
             del c[-1]
 
+        if len(c)<3:
+            skipped_small += 1
+            contours[i] = None
+            continue
+
         points = ' '.join(str(float(p[0])).rstrip('0').rstrip('.')+','+str(float(p[1])).rstrip('0').rstrip('.') for p in c)
         svg.append('<polygon class="%s" fill="%s" id="%d" points="%s"/>' % (label, color, i, points))
+
+    if skipped_small and verbose:
+        print('Skipped %d small contours'%(skipped_small))
 
     if save_to is not None:
         save_svg(save_to, svg, resolution=image.shape[::-1])
 
     if show:
         cimage = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-        cv2.drawContours(cimage, [np.int0(c) for c in contours], -1, color=(0, 0, 255))
+        cv2.drawContours(cimage, [np.int0(c) for c in contours if c is not None], -1, color=(0, 0, 255))
         cv2.imshow('Found Contours', cimage)
         cv2.waitKey()
 
