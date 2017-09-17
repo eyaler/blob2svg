@@ -1,12 +1,12 @@
 import numpy as np
 import cv2
-from scipy import ndimage
 from itertools import groupby
-
 
 def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, box=False, label=None, color=None,
              save_to=None, show=False, verbose=True):
     # method can be one of: cv2.CHAIN_APPROX_NONE, cv2.CHAIN_APPROX_SIMPLE (or None, default), cv2.CHAIN_APPROX_TC89_L1, cv2.CHAIN_APPROX_TC89_KCOS
+
+    np.random.seed(0)
 
     if isinstance(image, str):
         image = cv2.imread(image, cv2.IMREAD_GRAYSCALE)
@@ -22,8 +22,7 @@ def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, box
         blob_levels = [blob_levels[0]] * 2
     assert len(blob_levels) == 2
     image = np.uint8((image >= min(blob_levels)) * (image <= max(blob_levels)) * 255)
-    zoom = ndimage.zoom(image, 2,
-                        order=0)  # this is in order to get a scalable vertex-following contour instead of a pixel-following contour
+    zoom = cv2.resize(image, dsize=None, fx=2, fy=2, interpolation=cv2.INTER_NEAREST)   # this is in order to get a scalable vertex-following contour instead of a pixel-following contour
 
     if method is None:
         method = cv2.CHAIN_APPROX_SIMPLE
