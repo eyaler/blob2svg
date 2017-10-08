@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 from itertools import groupby
 
-def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, box=False, label=None, color=None,
+def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, min_area=0, box=False, label=None, color=None,
              save_to=None, show=False, verbose=True):
     # method can be one of: cv2.CHAIN_APPROX_NONE, cv2.CHAIN_APPROX_SIMPLE (or None, default), cv2.CHAIN_APPROX_TC89_L1, cv2.CHAIN_APPROX_TC89_KCOS
 
@@ -46,6 +46,11 @@ def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, box
 
         if abs_eps or rel_eps:
             contours[i] = cv2.approxPolyDP(contours[i], max(abs_eps, rel_eps * cv2.arcLength(contours[i], True)), True)
+
+        if cv2.contourArea(contours[i]) < min_area:
+            skipped_small += 1
+            contours[i] = None
+            continue
 
         if box:
             contours[i] = cv2.boxPoints(cv2.minAreaRect(contours[i]))[:, None, :]
