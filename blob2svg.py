@@ -1,11 +1,36 @@
 import numpy as np
 import cv2
 from itertools import groupby
+from time import time
 
-def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, min_area=0, box=False, label=None, color=None,
+def get_area(contour, i):
+    p1 = contour[i-1][0]
+    p2 = contour[i][0]
+    p3 = contour[i+1 if i+1<len(contour) else 0][0]
+    return abs((p2[0]-p1[0])*(p3[1]-p1[1])-(p3[0]-p1[0])*(p2[1]-p1[1]))/2
+
+def vw_closed(contour, area):
+    contour = np.asarray([x[0] for x in groupby(contour.tolist())]) # remove consecutive duplicates - for performance
+    areas = [get_area(contour, i) for i in range(len(contour))]
+    while len(contour)>2:
+        min_area = min(areas)
+        if min_area > area:
+            break
+        i = np.argmin(areas)
+        contour = np.delete(contour, i, axis=0)
+        del areas[i]
+        if len(areas)>0:
+            areas[i-1] = get_area(contour, i-1)
+            j = i if i<len(areas) else 0
+            areas[j] = get_area(contour, j)
+    return contour
+
+def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', abs_eps=0, rel_eps=0, min_area=0, box=False, label=None, color=None,
              save_to=None, show=False, verbose=True):
-    # method can be one of: cv2.CHAIN_APPROX_NONE, cv2.CHAIN_APPROX_SIMPLE (or None, default), cv2.CHAIN_APPROX_TC89_L1, cv2.CHAIN_APPROX_TC89_KCOS
+    # approx_method can be one of: cv2.CHAIN_APPROX_NONE, cv2.CHAIN_APPROX_SIMPLE (or None, default), cv2.CHAIN_APPROX_TC89_L1, cv2.CHAIN_APPROX_TC89_KCOS
+    # simp_method can be one of: 'RDP', 'VW'
 
+    start_time = time()
     np.random.seed(0)
 
     if isinstance(image, str):
@@ -24,11 +49,11 @@ def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, min
     image = np.uint8((image >= min(blob_levels)) * (image <= max(blob_levels)) * 255)
     zoom = cv2.resize(image, dsize=None, fx=2, fy=2, interpolation=cv2.INTER_NEAREST)   # this is in order to get a scalable vertex-following contour instead of a pixel-following contour
 
-    if method is None:
-        method = cv2.CHAIN_APPROX_SIMPLE
+    if approx_method is None:
+        approx_method = cv2.CHAIN_APPROX_SIMPLE
 
-    _, all_contours, _ = cv2.findContours(zoom, mode=cv2.RETR_LIST, method=method)
-    _, contours, _ = cv2.findContours(zoom, mode=cv2.RETR_EXTERNAL, method=method)
+    _, all_contours, _ = cv2.findContours(zoom, mode=cv2.RETR_LIST, method=approx_method)
+    _, contours, _ = cv2.findContours(zoom, mode=cv2.RETR_EXTERNAL, method=approx_method)
     if len(contours) != len(all_contours) and verbose:
         print('Warning: found and ignored %d child contours' % (len(all_contours) - len(contours)))
 
@@ -45,7 +70,12 @@ def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, min
         contours[i] = (contours[i] + 1) // 2
 
         if abs_eps or rel_eps:
-            contours[i] = cv2.approxPolyDP(contours[i], max(abs_eps, rel_eps * cv2.arcLength(contours[i], True)), True)
+            if simp_method == 'RDP':
+                contours[i] = cv2.approxPolyDP(contours[i], max(abs_eps, rel_eps * cv2.arcLength(contours[i], closed=True)), closed=True)
+            elif simp_method == 'VW':
+                contours[i] = vw_closed(contours[i], max(abs_eps, rel_eps * cv2.contourArea(contours[i])))
+            else:
+                raise NotImplementedError
 
         if cv2.contourArea(contours[i]) < min_area:
             skipped_small += 1
@@ -55,19 +85,17 @@ def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, min
         if box:
             contours[i] = cv2.boxPoints(cv2.minAreaRect(contours[i]))[:, None, :]
 
-        c = [tuple(x[0]) for x in contours[i]]
-
         # remove consecutive duplicates
-        c = [x[0] for x in groupby(c)]
-        if len(c) > 1 and c[-1] == c[0]:
-            del c[-1]
+        contour = [x[0][0] for x in groupby(contours[i].tolist())]
+        if len(contour) > 1 and contour[-1] == contour[0]:
+            del contour[-1]
 
-        if len(c)<3:
+        if len(contour)<3:
             skipped_small += 1
             contours[i] = None
             continue
 
-        points = ' '.join(str(float(p[0])).rstrip('0').rstrip('.')+','+str(float(p[1])).rstrip('0').rstrip('.') for p in c)
+        points = ' '.join(str(float(p[0])).rstrip('0').rstrip('.')+','+str(float(p[1])).rstrip('0').rstrip('.') for p in contour)
         svg.append('<polygon class="%s" fill="%s" id="%d" points="%s"/>' % (label, color, i, points))
 
     if skipped_small and verbose:
@@ -77,6 +105,7 @@ def blob2svg(image, blob_levels=(1, 255), method=None, abs_eps=0, rel_eps=0, min
         save_svg(save_to, svg, resolution=image.shape[::-1])
 
     if show:
+        print('%.1f sec' % (time() - start_time))
         cimage = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
         cv2.drawContours(cimage, [np.int0(c) for c in contours if c is not None], -1, color=(0, 0, 255))
         cv2.imshow('Found Contours', cimage)
@@ -94,3 +123,6 @@ def save_svg(filename, svg, resolution=None):
     svg = ['<svg xmlns="http://www.w3.org/2000/svg" version="1.1" %s>' % (resolution)] + svg + ['</svg>']
     with open(filename, 'w') as f:
         f.writelines(s + '\n' for s in svg)
+
+if __name__ == '__main__':
+    svg = blob2svg(image='test.png', save_to='test.svg', show=True)
