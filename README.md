@@ -12,3 +12,4 @@ Requirements:
 1. numpy
 2. scipy
 3. opencv
+4. wand (optional, for saving a png copy)

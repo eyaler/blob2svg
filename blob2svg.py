@@ -26,7 +26,7 @@ def vw_closed(contour, area):
     return contour
 
 def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', abs_eps=0, rel_eps=0, min_area=0, box=False, label=None, color=None,
-             save_to=None, show=False, verbose=True):
+             save_to=None, save_png=False, show=False, verbose=True):
     # approx_method can be one of: cv2.CHAIN_APPROX_NONE, cv2.CHAIN_APPROX_SIMPLE (or None, default), cv2.CHAIN_APPROX_TC89_L1, cv2.CHAIN_APPROX_TC89_KCOS
     # simp_method can be one of: 'RDP', 'VW'
 
@@ -103,6 +103,8 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
 
     if save_to is not None:
         save_svg(save_to, svg, resolution=image.shape[::-1])
+        if save_png:
+            svg2png(save_to)
 
     if show:
         print('%.1f sec' % (time() - start_time))
@@ -124,5 +126,11 @@ def save_svg(filename, svg, resolution=None):
     with open(filename, 'w') as f:
         f.writelines(s + '\n' for s in svg)
 
+
+def svg2png(filename):
+    from wand.image import Image
+    with Image(filename=filename) as image:
+        image.save(filename=filename + '.png')
+
 if __name__ == '__main__':
-    svg = blob2svg(image='test.png', save_to='test.svg', show=True)
+    svg = blob2svg(image='test.png', save_to='test.svg', save_png=True, show=True)
