@@ -136,4 +136,4 @@ def svg2png(filename, bg_color=None):
         image.save(filename=filename + '.png')
 
 if __name__ == '__main__':
-    svg = blob2svg(image='test.png', save_to='test.svg', save_png=True, show=True)
+    svg = blob2svg(image='test.png', save_to='test.svg', show=True)
