@@ -25,7 +25,7 @@ def vw_closed(contour, area):
             areas[j] = get_area(contour, j)
     return contour
 
-def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', abs_eps=0, rel_eps=0, min_area=0, box=False, label=None, color=None,
+def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', abs_eps=0, rel_eps=0, min_area=0, box=False, erode_dilate=0, label=None, color=None,
              save_to=None, save_png=False, png_bg_color=None, show=False, verbose=True):
     # approx_method can be one of: cv2.CHAIN_APPROX_NONE, cv2.CHAIN_APPROX_SIMPLE (or None, default), cv2.CHAIN_APPROX_TC89_L1, cv2.CHAIN_APPROX_TC89_KCOS
     # simp_method can be one of: 'RDP', 'VW'
@@ -47,13 +47,31 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
         blob_levels = [blob_levels[0]] * 2
     assert len(blob_levels) == 2
     image = np.uint8((image >= min(blob_levels)) * (image <= max(blob_levels)) * 255)
-    zoom = cv2.resize(image, dsize=None, fx=2, fy=2, interpolation=cv2.INTER_NEAREST)   # this is in order to get a scalable vertex-following contour instead of a pixel-following contour
+
+    kernel = np.ones((3,3), np.uint8)
+    if erode_dilate>0:
+        eroded = cv2.erode(image, kernel, iterations=erode_dilate)
+        num, labels = cv2.connectedComponents(eroded)
+        one_hot = (np.arange(1,num) == labels[..., np.newaxis]).astype(np.uint8)*255
+        comps = [cv2.dilate(one_hot[..., i], kernel, iterations=erode_dilate) for i in range(num-1)]
+    else:
+        comps = [image]
 
     if approx_method is None:
         approx_method = cv2.CHAIN_APPROX_SIMPLE
 
-    _, all_contours, _ = cv2.findContours(zoom, mode=cv2.RETR_LIST, method=approx_method)
-    _, contours, _ = cv2.findContours(zoom, mode=cv2.RETR_EXTERNAL, method=approx_method)
+    all_contours = []
+    contours = []
+
+    for comp in comps:
+        zoom = cv2.resize(comp, dsize=None, fx=2, fy=2, interpolation=cv2.INTER_NEAREST)   # this is in order to get a scalable vertex-following contour instead of a pixel-following contour
+
+        _, comp_all_contours, _ = cv2.findContours(zoom, mode=cv2.RETR_LIST, method=approx_method)
+        _, comp_contours, _ = cv2.findContours(zoom, mode=cv2.RETR_EXTERNAL, method=approx_method)
+
+        all_contours += comp_all_contours
+        contours += comp_contours
+
     if len(contours) != len(all_contours) and verbose:
         print('Warning: found and ignored %d child contours' % (len(all_contours) - len(contours)))
 
@@ -109,6 +127,7 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
     if show:
         print('%.1f sec' % (time() - start_time))
         cimage = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        cimage = cv2.copyMakeBorder(cimage, 0, 1, 0, 1, borderType=cv2.BORDER_CONSTANT)
         cv2.drawContours(cimage, [np.int0(c) for c in contours if c is not None], -1, color=(0, 0, 255))
         cv2.imshow('Found Contours', cimage)
         cv2.waitKey()
