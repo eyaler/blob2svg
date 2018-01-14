@@ -25,10 +25,11 @@ def vw_closed(contour, area):
             areas[j] = get_area(contour, j)
     return contour
 
-def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', abs_eps=0, rel_eps=0, min_area=0, box=False, erode_dilate_iters=0, erode_dilate_kernel=np.ones((3,3)), label=None, color=None,
+def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', abs_eps=0, rel_eps=0, min_area=0, box=False, erode_dilate_iters=0, erode_dilate_kernel=np.ones((3,3)), erode_dilate_connectivity=8, label=None, color=None,
              save_to=None, save_png=False, png_bg_color=None, show=False, verbose=True):
     # approx_method can be one of: cv2.CHAIN_APPROX_NONE, cv2.CHAIN_APPROX_SIMPLE (or None, default), cv2.CHAIN_APPROX_TC89_L1, cv2.CHAIN_APPROX_TC89_KCOS
     # simp_method can be one of: 'RDP', 'VW'
+    # connectivity can be one of: 0, 4, 8
 
     start_time = time()
     np.random.seed(0)
@@ -50,8 +51,14 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
 
     if erode_dilate_iters>0:
         eroded = cv2.erode(image, erode_dilate_kernel, iterations=erode_dilate_iters)
-        num, labels = cv2.connectedComponents(eroded)
-        one_hot = (np.arange(1,num) == labels[..., np.newaxis]).astype(np.uint8)*255
+        if erode_dilate_connectivity in (4,8):
+            num, labels = cv2.connectedComponents(eroded, connectivity=erode_dilate_connectivity)
+            one_hot = (np.arange(1,num) == labels[..., np.newaxis]).astype(np.uint8)*255
+        elif erode_dilate_connectivity==0:
+            num = 2
+            one_hot = eroded[..., np.newaxis]
+        else:
+            raise ValueError
         comps = [cv2.dilate(one_hot[..., i], erode_dilate_kernel, iterations=erode_dilate_iters) for i in range(num-1)]
     else:
         comps = [image]
@@ -92,7 +99,7 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
             elif simp_method == 'VW':
                 contours[i] = vw_closed(contours[i], max(abs_eps, rel_eps * cv2.contourArea(contours[i])))
             else:
-                raise NotImplementedError
+                raise ValueError
 
         if cv2.contourArea(contours[i]) < min_area:
             skipped_small += 1
