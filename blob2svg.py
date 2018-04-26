@@ -2,7 +2,10 @@ import numpy as np
 import cv2
 from itertools import groupby
 from time import time
+import re
 
+def rgb2hex(color):
+    return '#%02x%02x%02x' % tuple(color)
 
 def get_area(contour, i):
     p1 = contour[i - 1, 0]
@@ -62,8 +65,8 @@ def polybreak(contour):
 
 def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', abs_eps=0, rel_eps=0, min_area=0,
              box=False, box_min_frac=0, erode_dilate_iters=0, erode_dilate_kernel=np.ones((3, 3)),
-             erode_dilate_connectivity=8, label=None, color=None,
-             save_to=None, save_png=False, png_bg_color=None, show=0, verbose=True):
+             erode_dilate_connectivity=8, label=None, color=None, random_colors=True,
+             save_to=None, bg_color=None, save_png=False, show=0, verbose=True):
     # approx_method can be one of: cv2.CHAIN_APPROX_NONE, cv2.CHAIN_APPROX_SIMPLE (or None, default), cv2.CHAIN_APPROX_TC89_L1, cv2.CHAIN_APPROX_TC89_KCOS
     # simp_method can be one of: 'RDP', 'VW'
     # connectivity can be one of: 0, 4, 8
@@ -73,9 +76,8 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
 
     if isinstance(image, str):
         image = cv2.imread(image, cv2.IMREAD_GRAYSCALE)
-
-    image = image.squeeze()
-    assert len(image.shape) == 2, 'image must be single channel'
+    elif len(image.shape)==3:
+        image = np.mean(image, axis=-1)
 
     try:
         len(blob_levels)
@@ -121,10 +123,12 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
         print('Warning: found and ignored %d child contours' % (len(all_contours) - len(contours)))
 
     svg = []
-    if color is None:
+    if color is None and random_colors:
         r = lambda: np.random.randint(0, 255)
-        color = '#%02X%02X%02X' % (r(), r(), r())
-    if label is None:
+        color = (r(), r(), r())
+    if isinstance(color, (tuple,list)):
+        color = rgb2hex(color)
+    if label is None and color is not None:
         label = color
 
     contours.sort(key=lambda x: str(x))
@@ -180,7 +184,16 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
         points = ' '.join(
             str(float(p[0, 0])).rstrip('0').rstrip('.') + ',' + str(float(p[0, 1])).rstrip('0').rstrip('.') for p in
             contours[i])
-        svg.append('<polygon class="%s" fill="%s" id="%d" points="%s"/>' % (label, color, i, points))
+
+        cls = ''
+        if label is not None:
+            cls = ' class="%s"'%label
+        if color is not None:
+            fill = ' fill="%s"'%color
+        else:
+            fill = ' fill-opacity="0"'
+        polygon = '<polygon%s%s id="%d" points="%s"/>' % (cls, fill, i, points)
+        svg.append(polygon)
 
     if verbose:
         if skipped_small:
@@ -189,9 +202,7 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
             print('Broke %d boxes' % (broke_boxes))
 
     if save_to is not None:
-        save_svg(save_to, svg, resolution=image.shape[::-1])
-        if save_png:
-            svg2png(save_to, bg_color=png_bg_color)
+        save_svg(save_to, svg, resolution=image.shape[::-1], bg_color=bg_color, save_png=save_png)
 
     if show:
         print('%.1f sec' % (time() - start_time))
@@ -215,25 +226,40 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
     return svg
 
 
-def save_svg(filename, svg, resolution=None):
+def save_svg(filename, svg, resolution=None, bg_color=None, save_png=False):
     if resolution is None:
         resolution = ''
         print('Warning: resolution not specified')
     else:
-        resolution = 'width="%s" height="%s"' % (resolution[0], resolution[1])
-    svg = ['<svg xmlns="http://www.w3.org/2000/svg" version="1.1" %s>' % (resolution)] + svg + ['</svg>']
+        resolution = ' width="%s" height="%s"' % (resolution[0], resolution[1])
+    if bg_color is None:
+        bg_color = ''
+        print('Warning: resolution not specified')
+    else:
+        if isinstance(bg_color, (tuple, list)):
+            bg_color = rgb2hex(bg_color)
+        bg_color = ' style="background-color: %s"' % bg_color
+
+    svg = ['<svg xmlns="http://www.w3.org/2000/svg" version="1.1"%s%s>' % (resolution, bg_color)] + svg + ['</svg>']
     with open(filename, 'w') as f:
         f.writelines(s + '\n' for s in svg)
+    if save_png:
+        svg2png(filename)
 
-
-def svg2png(filename, bg_color=None):
+def svg2png(filename):
     from wand.image import Image, Color
+    with open(filename) as f:
+        svg = f.read()
+    bg_color = None
+    match = re.search('"background-color: (#[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})"', svg)
+    if match:
+        bg_color = match.group(1)
     with Image(filename=filename) as image:
+        image.compression_quality = 9
         if bg_color is not None:
             image.background_color = Color(bg_color)
             image.alpha_channel = 'remove'
         image.save(filename=filename + '.png')
-
 
 if __name__ == '__main__':
     svg = blob2svg(image='test.png', save_to='test.svg', show=2)
