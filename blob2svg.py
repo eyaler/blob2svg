@@ -3,6 +3,7 @@ import cv2
 from itertools import groupby
 from time import time
 import re
+from xml.sax.saxutils import quoteattr
 
 def rgb2hex(color):
     return '#%02x%02x%02x' % tuple(color)
@@ -187,7 +188,7 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
 
         cls = ''
         if label is not None:
-            cls = ' class="%s"'%label
+            cls = ' class=%s'%quoteattr(label)
         if color is not None:
             fill = ' fill="%s"'%color
         else:
