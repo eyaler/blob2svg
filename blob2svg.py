@@ -4,9 +4,13 @@ from itertools import groupby
 from time import time
 import re
 from xml.sax.saxutils import quoteattr
+import xml.etree.ElementTree as ET
 
 def rgb2hex(color):
     return '#%02x%02x%02x' % tuple(color)
+
+def hex2rgb(color):
+    return tuple(int(color.strip().lstrip('#')[i:i + 2], 16) for i in (0, 2, 4))
 
 def get_area(contour, i):
     p1 = contour[i - 1, 0]
@@ -63,11 +67,19 @@ def polybreak(contour):
     contour2 = cyclic[internal_ind:external_ind + 1 + len(contour) * (external_ind < internal_ind)]
     return [contour1, contour2], [tuple(internal_point), tuple(contour[external_ind, 0])]
 
+def draw_exact_contours(image, contours, color):
+    mask = np.zeros((image.shape[0]*2, image.shape[1]*2))
+    contours = [contour * 2 for contour in contours]
+    cv2.fillPoly(mask, contours, 255)
+    mask = cv2.erode(mask, np.array([[0, 0, 0], [0, 1, 1], [0, 1, 1]], dtype=np.uint8))
+    mask = cv2.resize(mask, dsize=None, fx=0.5, fy=0.5)
+    image[mask>0] = color
+    return image
 
 def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', abs_eps=0, rel_eps=0, min_area=0,
              box=False, box_min_frac=0, erode_dilate_iters=0, erode_dilate_kernel=np.ones((3, 3)),
              erode_dilate_connectivity=8, label=None, color=None, random_colors=True,
-             save_to=None, bg_color=None, save_png=False, show=0, verbose=True):
+             save_to=None, bg_color=None, save_png=False, use_wand=False, show=0, verbose=True):
     # approx_method can be one of: cv2.CHAIN_APPROX_NONE, cv2.CHAIN_APPROX_SIMPLE (or None, default), cv2.CHAIN_APPROX_TC89_L1, cv2.CHAIN_APPROX_TC89_KCOS
     # simp_method can be one of: 'RDP', 'VW'
     # connectivity can be one of: 0, 4, 8
@@ -125,9 +137,8 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
 
     svg = []
     if color is None and random_colors:
-        r = lambda: np.random.randint(0, 255)
-        color = (r(), r(), r())
-    if isinstance(color, (tuple,list)):
+        color = (np.random.randint(0, 255), np.random.randint(0, 255), np.random.randint(0, 255))
+    if isinstance(color, (tuple,list,np.ndarray)):
         color = rgb2hex(color)
     if label is None and color is not None:
         label = color
@@ -144,7 +155,7 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
             contours[i] = (contours[i] + 1) // 2
 
         # remove consecutive duplicates
-        contours[i] = np.asarray([x[0] for x in groupby(contours[i].tolist())])
+        contours[i] = np.array([x[0] for x in groupby(contours[i].tolist())])
         if len(contours[i]) > 1 and np.array_equal(contours[i][-1], contours[i][0]):
             contours[i] = contours[i][:-1]
 
@@ -203,14 +214,15 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
             print('Broke %d boxes' % (broke_boxes))
 
     if save_to is not None:
-        save_svg(save_to, svg, resolution=image.shape[::-1], bg_color=bg_color, save_png=save_png)
+        save_svg(save_to, svg, dimensions=image.shape[::-1], bg_color=bg_color, save_png=save_png, use_wand=use_wand)
 
     if show:
         print('%.1f sec' % (time() - start_time))
         cimage = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
         cimage = cv2.copyMakeBorder(cimage, 0, 1, 0, 1, borderType=cv2.BORDER_CONSTANT)
         if show<=2:
-            cv2.drawContours(cimage, [np.int0(c) for c in contours if c is not None], -1, (0, 0, 255))
+            contours = [np.int0(c) for c in contours if c is not None]
+            cv2.drawContours(cimage, contours, -1, (0, 0, 255))
             if show == 2:
                 for bps in break_points:
                     cv2.circle(cimage, bps[0], 4, (0, 255, 0), thickness=2)
@@ -218,49 +230,86 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
         elif show==3:
             for c in contours:
                 if c is not None:
-                    cv2.drawContours(cimage, [np.int0(c)], -1,
-                                     (np.random.randint(64, 256), np.random.randint(64, 256), np.random.randint(64, 256)),
-                                     thickness=-1)
+                    color = (np.random.randint(64, 256), np.random.randint(64, 256), np.random.randint(64, 256))
+                    draw_exact_contours(cimage, [np.int0(c)], color)
         cv2.imshow('Found Contours', cimage)
         cv2.waitKey()
 
     return svg
 
 
-def save_svg(filename, svg, resolution=None, bg_color=None, save_png=False):
-    if resolution is None:
-        resolution = ''
-        print('Warning: resolution not specified')
+def save_svg(filename, svg, dimensions=None, bg_color=None, save_png=False, use_wand=False):
+    if dimensions is None:
+        dimensions = ''
+        print('Warning: dimensions not specified')
     else:
-        resolution = ' width="%s" height="%s"' % (resolution[0], resolution[1])
+        dimensions = ' width="%s" height="%s"' % (dimensions[0], dimensions[1])
     if bg_color is None:
         bg_color = ''
-        print('Warning: resolution not specified')
     else:
         if isinstance(bg_color, (tuple, list)):
             bg_color = rgb2hex(bg_color)
         bg_color = ' style="background-color: %s"' % bg_color
 
-    svg = ['<svg xmlns="http://www.w3.org/2000/svg" version="1.1"%s%s>' % (resolution, bg_color)] + svg + ['</svg>']
+    svg = ['<?xml version="1.0"?>']+['<svg xmlns="http://www.w3.org/2000/svg" version="1.1"%s%s>' % (dimensions, bg_color)] + svg + ['</svg>']
     with open(filename, 'w') as f:
         f.writelines(s + '\n' for s in svg)
     if save_png:
-        svg2png(filename)
+        svg2png(filename, use_wand=use_wand)
 
-def svg2png(filename):
-    from wand.image import Image, Color
-    with open(filename) as f:
-        svg = f.read()
+def svg2png(svg_filename_or_string, png_filename=None, use_wand=False, limit_labels=[]):
+    assert not use_wand or len(limit_labels)==0
+    blob = False
+    try:
+        root = ET.parse(svg_filename_or_string).getroot()
+    except:
+        root = ET.fromstring(svg_filename_or_string)
+        blob = True
+        assert png_filename is not None
+    if png_filename is None:
+        png_filename = svg_filename_or_string
     bg_color = None
-    match = re.search('"background-color: (#[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})"', svg)
-    if match:
-        bg_color = match.group(1)
-    with Image(filename=filename) as image:
-        image.compression_quality = 9
+    if 'style' in root.attrib:
+        match = re.search('background-color: (#[A-Fa-f0-9]{6})', root.attrib['style'])
+        if match:
+            bg_color = match.group(1)
+    if use_wand:
+        from wand.image import Image, Color
+        with Image(filename=svg_filename_or_string if not blob else None, blob=svg_filename_or_string if blob else None) as image:
+            image.compression_quality = 9
+            if bg_color is not None:
+                image.background_color = Color(bg_color)
+                image.alpha_channel = 'remove'
+            image.save(filename=png_filename + '.png')
+    else:
+        if 'width' in root.attrib and 'height' in root.attrib:
+            height = int(float(root.attrib['height']))
+            width = int(float(root.attrib['width']))
+        else:
+            raise ValueError('Could not find height and width attributes in svg')
+        image = np.zeros((height, width, 4), dtype=np.uint8)
         if bg_color is not None:
-            image.background_color = Color(bg_color)
-            image.alpha_channel = 'remove'
-        image.save(filename=filename + '.png')
+            image[:] = hex2rgb(bg_color)+(255,)
+        for child in root:
+            if not child.tag.endswith('polygon') or (len(limit_labels)>0 and 'class' in child.attrib and child.attrib['class'] not in limit_labels):
+                continue
+            if 'fill' in child.attrib:
+                contour = np.array([[[float(point.split(',')[0]), float(point.split(',')[1])]] for point in child.attrib['points'].split(' ')], dtype=np.int0)
+                draw_exact_contours(image, [contour], hex2rgb(child.attrib['fill'])+(255,))
+        cv2.imwrite(png_filename + '.png', cv2.cvtColor(image, cv2.COLOR_RGBA2BGRA), (cv2.IMWRITE_PNG_COMPRESSION, 9))
+
+def test_svg2png(filename):
+    blob2svg(image=filename, save_to=filename.replace('.png','.svg'), save_png=True, verbose=False)
+    png1 = cv2.imread(filename.replace('.png','.svg.png'))
+    blob2svg(image=filename, save_to=filename.replace('.png','_wand.svg'), save_png=True, use_wand=True, verbose=False)
+    png2 = cv2.imread(filename.replace('.png', '_wand.svg.png'))
+    cv2.imwrite(filename.replace('.png', '_diff.png'), np.uint8(np.abs(png1-png2)))
+    bad_pixels = np.sum(~np.isclose(png1, png2))
+    if bad_pixels>0:
+        print('Warning: found %d bad pixels' % bad_pixels)
+    else:
+        print('svg2png passed test')
 
 if __name__ == '__main__':
-    svg = blob2svg(image='test.png', save_to='test.svg', show=2)
+    #test_svg2png('test.png')
+    svg = blob2svg(image='test.png', save_to='test.svg', show=2, save_png=True)
