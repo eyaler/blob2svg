@@ -5,12 +5,19 @@ from time import time
 import re
 from xml.sax.saxutils import quoteattr
 import xml.etree.ElementTree as ET
+import decimal
 
 def rgb2hex(color):
     return '#%02x%02x%02x' % tuple(color)
 
 def hex2rgb(color):
     return tuple(int(color.strip().lstrip('#')[i:i + 2], 16) for i in (0, 2, 4))
+
+ctx = decimal.Context()
+ctx.prec = 20
+def float_to_str(x):
+    d1 = ctx.create_decimal(repr(x))
+    return format(d1, 'f')
 
 def get_area(contour, i):
     p1 = contour[i - 1, 0]
@@ -193,9 +200,7 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
             contours[i] = None
             continue
 
-        points = ' '.join(
-            str(float(p[0, 0])).rstrip('0').rstrip('.') + ',' + str(float(p[0, 1])).rstrip('0').rstrip('.') for p in
-            contours[i])
+        points = ' '.join(float_to_str(p[0,0]) + ',' + float_to_str(p[0,1]) for p in contours[i])
 
         cls = ''
         if label is not None:
