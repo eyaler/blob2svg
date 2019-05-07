@@ -133,8 +133,8 @@ def blob2svg(image, blob_levels=(1, 255), approx_method=None, simp_method='VW', 
         zoom = cv2.resize(comp, dsize=None, fx=2, fy=2,
                           interpolation=cv2.INTER_NEAREST)  # this is in order to get a scalable vertex-following contour instead of a pixel-following contour
 
-        _, comp_all_contours, _ = cv2.findContours(zoom, mode=cv2.RETR_LIST, method=approx_method)
-        _, comp_contours, _ = cv2.findContours(zoom, mode=cv2.RETR_EXTERNAL, method=approx_method)
+        comp_all_contours, _ = cv2.findContours(zoom, mode=cv2.RETR_LIST, method=approx_method)
+        comp_contours, _ = cv2.findContours(zoom, mode=cv2.RETR_EXTERNAL, method=approx_method)
 
         all_contours += comp_all_contours
         contours += comp_contours
